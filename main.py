@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
+from PIL import Image, ImageFilter
+
 from symbol_operate import parse_symbol
 
 
@@ -91,7 +93,7 @@ def find_contours(name, ind):
     warped = cv2.warpPerspective(image, M, (maxWidth, maxHeight), flags=cv2.INTER_LINEAR)
 
     # cv2.imshow('i', warped)
-    cv2.imwrite(f'normals/{name}.png', warped)
+    # cv2.imwrite(f'normals/{name}.png', warped)
 
     vertices = []
     # Img size and icon size
@@ -100,14 +102,19 @@ def find_contours(name, ind):
     for i in range(8):  # line
         for j in range(6):  # column
             a, b, c, d = i * h, (i + 1) * h, j * w, (j + 1) * w
-            cv2.imwrite(f'res/{name}/{i * 6 + j}.png', warped[a:b, c:d])
+            cv2.imwrite(f'res/{name}/{i * 6 + j}_og.png', warped[a:b, c:d])
 
-            symbol_graph, skeleton, thresh, ans, num_vertices = parse_symbol(f'res/{name}/{i * 6 + j}.png')
+            symbol_graph, skeleton, thresh, ans, num_vertices = parse_symbol(f'res/{name}/{i * 6 + j}_og.png')
 
-            cv2.imwrite(f'res/{name}/{i * 6 + j}.png', symbol_graph)
+            cv2.imwrite(f'res/{name}/{i * 6 + j}_og.png', symbol_graph)
             cv2.imwrite(f'res/{name}/{i * 6 + j}_sk.png', skeleton)
             cv2.imwrite(f'res/{name}/{i * 6 + j}_th.png', thresh)
             cv2.imwrite(f'res/{name}/{i * 6 + j}.png', ans)
+
+            # image = Image.open(f'res/{name}/{i * 6 + j}_th.png')
+            # image = image.filter(ImageFilter.ModeFilter(size=13))
+            # image.save(f'res/{name}/{i * 6 + j}_th.png')
+
             vertices.append(num_vertices)
 
     line = {}
@@ -121,6 +128,13 @@ def find_contours(name, ind):
 
     data.to_csv(filename, index=False)
 
+
+# train = [5, 1, 6, 47]
+# train_ans = {5: [],
+#              1: [4, 5, 3, 3, 4, 7, 0, 4, 6, 0, 5, 2, 3, 4, 7, 4, -1, -1, 4, 6, 4, 2, 3, 4, 6, 7, 1, 6, 2, 8, 3, 4, 5, 6,
+#                  3, 8, 9, 7, 5, 4, 3, 3, 5, 4, 7, 6, 8, 6, 9],
+#              6: [],
+#              47: []}
 
 if __name__ == '__main__':
     filename = 'symbol_data.csv'
