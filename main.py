@@ -1,5 +1,6 @@
 import cv2
 import os
+import shutil
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -107,9 +108,9 @@ def find_contours(name, ind):
             symbol_graph, skeleton, thresh, ans, num_vertices = parse_symbol(f'res/{name}/{i * 6 + j}_og.png')
 
             cv2.imwrite(f'res/{name}/{i * 6 + j}_og.png', symbol_graph)
+            cv2.imwrite(f'res/{name}/{i * 6 + j}.png', ans)
             cv2.imwrite(f'res/{name}/{i * 6 + j}_sk.png', skeleton)
             cv2.imwrite(f'res/{name}/{i * 6 + j}_th.png', thresh)
-            cv2.imwrite(f'res/{name}/{i * 6 + j}.png', ans)
 
             # image = Image.open(f'res/{name}/{i * 6 + j}_th.png')
             # image = image.filter(ImageFilter.ModeFilter(size=13))
