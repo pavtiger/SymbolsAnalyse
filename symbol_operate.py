@@ -77,12 +77,13 @@ class Angles:
     # Recursive function, similar to DFS
     def merge_angles(self, index, group_id):
         self.groups[index] = group_id
-        for idx, ang in enumerate(self.angles):  # Iterate over all angles
+        for idx, angle in enumerate(self.angles):  # Iterate over all angles
             if self.groups[idx] != -1 or idx == index: continue  # Already assigned group id
 
-            if abs(ang - self.angles[index]) <= self.eps_angle or \
-                    abs(ang + 360 - self.angles[index]) <= self.eps_angle or \
-                    abs(ang - 360 - self.angles[index]) <= self.eps_angle:
+            ang = angle[0]
+            if abs(ang - self.angles[index][0]) <= self.eps_angle or \
+                    abs(ang + 360 - self.angles[index][0]) <= self.eps_angle or \
+                    abs(ang - 360 - self.angles[index][0]) <= self.eps_angle:
                 self.merge_angles(idx, group_id)
 
     # Simplified call function
@@ -95,17 +96,19 @@ class Angles:
 
         ans = []
         for id in range(cl):
-            cnt, x, y = 0, 0, 0  # x, y to calc the average
+            cnt, x, y, avg_rad = 0, 0, 0, 100  # x, y to calc the average
             for i in range(self.n):
                 if self.groups[i] == id:
-                    rad_angle = self.angles[i] / 180 * math.pi
+                    rad_angle = self.angles[i][0] / 180 * math.pi
                     x += math.cos(rad_angle)
                     y += math.sin(rad_angle)
                     cnt += 1
+                    avg_rad += self.angles[i][1]
 
             avg_angle = int(math.atan2(y, x) / math.pi * 180)
             if avg_angle < 0: avg_angle += 360
-            if cnt > 2: ans.append(avg_angle)
+            if cnt > 3: ans.append(avg_angle)
+            # if cnt > 3 and avg_rad / cnt <= 20: ans.append(avg_angle)
 
         return ans
 
@@ -127,8 +130,11 @@ def count_branches(resized_skel, x, y, radius, eps):
                     angles_dict[_y * height + _x] = angle
 
     angles = list(angles_dict.values())
+    converted = []
+    for a in angles:
+        converted.append([a, 0])
 
-    angle_merger = Angles(angles)
+    angle_merger = Angles(converted)
     return angle_merger.calc()
 
 
@@ -186,7 +192,6 @@ def parse_symbol(path):
 
     # radius = 30  # Radius of the circle from the point
     eps = 50  # Merge angles
-    angle_difference = 95  # If 2 branches out of current point, then what should the difference be
     height, width = resized_skel.shape
 
     # Remove unnecessary points
@@ -213,11 +218,10 @@ def parse_symbol(path):
         for x in range(width):
             if resized_skel[y][x] == 255:  # if it is a part of line
                 cleaned_angles = []
-                layered_angles = []
-                for rad in range(10, 40, 2):
+                for rad in range(8, 40, 2):
                     # Check branches with increasing radius
-                    cleaned_angles += count_branches(resized_skel, x, y, rad, eps)
-                    layered_angles.append(count_branches(resized_skel, x, y, rad, eps))
+                    for angle in count_branches(resized_skel, x, y, rad, eps):
+                        cleaned_angles.append([angle, rad])
 
                 # Merge similar angles together
                 angle_merger = Angles(cleaned_angles)
@@ -226,11 +230,10 @@ def parse_symbol(path):
                 branch_cnt = len(the_angles)  # Total number of branches coming out of this pixel (for the ease of use)
 
                 if branch_cnt >= 3 or branch_cnt == 1:
-                    # if x < 100 and y > 200:
                     points.append([x, y])
                     org = cv2.circle(org, (x, y), 0, (0, 255, 0), -1)
 
-                    # for layer in range(10, 40, 1):
+                    # for layer in range(5, 40, 1):
                     #     for a in layered_angles[layer // 5 - 2]:
                     #         radian_angle = a * math.pi / 180
                     #         _x = int(x + layer * math.cos(radian_angle))
@@ -240,11 +243,11 @@ def parse_symbol(path):
 
                     # cv2.imwrite('org.png', org)
 
-                elif branch_cnt == 2:
-                    diff = abs(the_angles[0] - the_angles[1])
-                    if min(diff, 360 - diff) < angle_difference:
-                        points.append([x, y])
-                        org = cv2.circle(org, (x, y), 0, (0, 255, 0), -1)
+                # elif branch_cnt == 2:
+                    # diff = abs(the_angles[0] - the_angles[1])
+                    # if min(diff, 360 - diff) < angle_difference:
+                    #     points.append([x, y])
+                    #     org = cv2.circle(org, (x, y), 0, (0, 255, 0), -1)
 
     # Merge multiple points into one
     p = Points(points)
