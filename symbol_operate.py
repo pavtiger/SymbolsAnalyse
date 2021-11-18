@@ -1,6 +1,7 @@
 import cv2
 import math
 import sys
+from collections import defaultdict
 
 from time import sleep
 
@@ -67,12 +68,12 @@ class Points:
 # This class is practically the same as Points, however it works with angles, so I've created a separate class
 # TODO: consider merging these two classes together
 class Angles:
-    def __init__(self, angles):
+    def __init__(self, angles, radius, eps):
         self.angles = angles
         self.n = len(angles)
 
         self.groups = [-1 for i in range(self.n)]
-        self.eps_angle = 30
+        self.eps_angle = eps
 
     # Recursive function, similar to DFS
     def merge_angles(self, index, group_id):
@@ -81,22 +82,20 @@ class Angles:
             if self.groups[idx] != -1 or idx == index: continue  # Already assigned group id
 
             ang = angle[0]
-            if abs(ang - self.angles[index][0]) <= self.eps_angle or \
-                    abs(ang + 360 - self.angles[index][0]) <= self.eps_angle or \
-                    abs(ang - 360 - self.angles[index][0]) <= self.eps_angle:
+            if min(abs(ang - self.angles[index][0]), 360 - abs(ang - self.angles[index][0])) <= self.eps_angle:
                 self.merge_angles(idx, group_id)
 
     # Simplified call function
-    def calc(self):
+    def calc(self, min_rad, min_amount):
         cl = 0  # Number of groups
         for i in range(self.n):
-            if self.groups[i] == -1:
+            if self.groups[i] == -1 and self.angles[i][1] <= min_rad:
                 self.merge_angles(i, cl)  # Call recursive function from every angle that is not assigned to a group yet
                 cl += 1
 
         ans = []
         for id in range(cl):
-            cnt, x, y, avg_rad = 0, 0, 0, 100  # x, y to calc the average
+            cnt, x, y, min_rad, avg_rad = 0, 0, 0, 100, 0  # x, y to calc the average
             for i in range(self.n):
                 if self.groups[i] == id:
                     rad_angle = self.angles[i][0] / 180 * math.pi
@@ -104,51 +103,89 @@ class Angles:
                     y += math.sin(rad_angle)
                     cnt += 1
                     avg_rad += self.angles[i][1]
+                    # min_rad = min(min_rad, self.angles[i][1])
 
             avg_angle = int(math.atan2(y, x) / math.pi * 180)
+            # min_rad = min(min_rad)
             if avg_angle < 0: avg_angle += 360
-            if cnt > 3: ans.append(avg_angle)
-            # if cnt > 3 and avg_rad / cnt <= 20: ans.append(avg_angle)
+
+            # print(min_rad)
+            # ans.append(avg_angle)
+            if cnt > min_amount: ans.append(avg_angle)
+            # if cnt > 3 and min_rad <= 6: ans.append(avg_angle)
+            # if cnt > 3 and (avg_rad / cnt) <= 25: ans.append(avg_angle)
 
         return ans
 
 
-def count_branches(resized_skel, x, y, radius, eps):
-    angles_dict = {}
+def count_branches(resized_skel, x, y, radius, eps, org):
+    angles_dict = defaultdict(list)
     height, width = resized_skel.shape
 
+    cnt = 0
+
     for r in range(radius - 1, radius + 1):
-        for angle in range(0, 360, 2):
+        for angle in range(0, 360, 1):
             rad_angle = angle * math.pi / 180  # Convert to radians
 
             # Coordinates of the point on the circle
             _x = int(x + r * math.cos(rad_angle))
             _y = int(y + r * math.sin(rad_angle))
 
+            # org = cv2.circle(org, (_x, _y), 0, (0, 255, 0), -1)
+
             if 0 <= _x < width and 0 <= _y < height:  # in range
                 if resized_skel[_y][_x] == 255:
-                    angles_dict[_y * height + _x] = angle
+                    angles_dict[f'{_y}-{_x}'].append(angle)
+                    cnt += 1
 
-    angles = list(angles_dict.values())
+    angles = []
+    for angles_to_average in angles_dict.values():
+        vx, vy = 0, 0
+        for angle in angles_to_average:
+            rad_angle = angle / 180 * math.pi
+            vx += math.cos(rad_angle)
+            vy += math.sin(rad_angle)
+
+        avg_angle = int(math.atan2(vy, vx) / math.pi * 180)
+        if avg_angle < 0: avg_angle += 360
+        angles.append(avg_angle)
+
     converted = []
     for a in angles:
         converted.append([a, 0])
 
-    angle_merger = Angles(converted)
-    return angle_merger.calc()
+    angle_merger = Angles(converted, radius, 20)
+    ret = angle_merger.calc(100000, 0)
+    if len(ret) == 0:
+        print(cnt)
+        # org = cv2.circle(org, (x, y), 0, (0, 255, 0), -1)
+
+    return ret
+    # return angles
 
 
-# CHeck if there is a consistent branch on all levels
-def recursive_filter_branches(all_branches, layer, index):
+# Check if there is a consistent branch on all levels
+def recursive_filter_branches(all_branches, layer, index, eps, length):
     if layer + 1 >= len(all_branches):
         return [index]
 
-    for j in range(len(all_branches[layer + 1])):
-        if abs(all_branches[layer][index] - all_branches[layer + 1][j]) < 30:
-            returned = recursive_filter_branches(all_branches, layer + 1, j)
-            if returned: return returned + [index]
+    best = []
 
-    return []
+    for j in range(len(all_branches[layer + 1])):
+        if abs(all_branches[layer][index] - all_branches[layer + 1][j]) < eps:
+            returned = recursive_filter_branches(all_branches, layer + 1, j, eps, length + 1)
+            if (len(returned) + 1) > len(best):
+                best = [index] + returned
+
+    # if layer + 2 < len(all_branches):
+    #     for j in range(len(all_branches[layer + 2])):
+    #         if abs(all_branches[layer][index] - all_branches[layer + 2][j]) < eps:
+    #             returned = recursive_filter_branches(all_branches, layer + 2, j, eps, length + 1)
+    #             if (len(returned) + 1) > len(best):
+    #                 best = returned + [index]
+
+    return best
 
 
 # Main function
@@ -217,21 +254,65 @@ def parse_symbol(path):
     for y in range(height):
         for x in range(width):
             if resized_skel[y][x] == 255:  # if it is a part of line
-                cleaned_angles = []
-                for rad in range(8, 40, 2):
+                cleaned_angles, layered_angles = [], []
+                for rad in range(6, 40, 1):  # 4, 40, 2     10, 12, 2
                     # Check branches with increasing radius
-                    for angle in count_branches(resized_skel, x, y, rad, eps):
+                    branches = count_branches(resized_skel, x, y, rad, eps, org)
+                    if len(branches) == 0:
+                        print(f'{x}, {y} - {rad}')
+                        # org = cv2.circle(org, (x, y), 0, (0, 255, 0), -1)
+                        # count_branches(resized_skel, x, y, rad, eps, org)
+
+                    layered_angles.append(branches)
+                    for angle in branches:
                         cleaned_angles.append([angle, rad])
 
                 # Merge similar angles together
-                angle_merger = Angles(cleaned_angles)
-                the_angles = angle_merger.calc()
+                # angle_merger = Angles(cleaned_angles, -1, 50)
+                # the_angles = angle_merger.calc(8, 6)
+
+                the_angles = []
+                used = {}
+                for layer in range(len(layered_angles)):
+                    used[layer] = [False for _ in range(len(layered_angles[layer]))]
+
+                for layer in range(0, 3):
+                    used[layer] = [False for _ in range(len(layered_angles[layer]))]
+                    for index in range(len(layered_angles[layer])):
+                        if used[layer][index]: continue
+
+                        ret = recursive_filter_branches(layered_angles, layer, index, 30, 1)
+                        if len(ret) > 3:
+                            _x, _y = 0, 0
+                            for l, ind in enumerate(ret):
+                                used[l + layer][ind] = True
+
+                                rad_angle = layered_angles[l + layer][ind] / 180 * math.pi
+                                _x += math.cos(rad_angle)
+                                _y += math.sin(rad_angle)
+
+                            avg_angle = int(math.atan2(_y, _x) / math.pi * 180)
+                            if avg_angle < 0: avg_angle += 360
+                            the_angles.append(avg_angle)
 
                 branch_cnt = len(the_angles)  # Total number of branches coming out of this pixel (for the ease of use)
 
+                # cv2.imwrite('org.png', org)
+                # sleep(5)
+
                 if branch_cnt >= 3 or branch_cnt == 1:
-                    points.append([x, y])
-                    org = cv2.circle(org, (x, y), 0, (0, 255, 0), -1)
+                    # if 0 < x < 230 and 20 < y < 100:
+                    # if 220 < x < 300 and 60 < y < 130:
+                    if 100 < x < 250 and 100 < y < 250:
+                        points.append([x, y])
+                        arr = list(list(zip(*cleaned_angles))[0])
+                        arr.sort()
+                        org = cv2.circle(org, (x, y), 0, (0, 255, 0), -1)
+                    else:
+                        org = cv2.circle(org, (x, y), 0, (0, 0, 255), -1)
+
+                    # am = Angles(cleaned_angles, -1, 30)
+                    # am.calc(8, 6)
 
                     # for layer in range(5, 40, 1):
                     #     for a in layered_angles[layer // 5 - 2]:

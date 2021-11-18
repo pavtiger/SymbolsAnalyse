@@ -103,6 +103,7 @@ def find_contours(name, ind):
     for i in range(8):  # line
         for j in range(6):  # column
             if i * 6 + j != 23: continue
+            # if i * 6 + j != 3: continue
 
             a, b, c, d = i * h, (i + 1) * h, j * w, (j + 1) * w
             cv2.imwrite(f'res/{name}/{i * 6 + j}_og.png', warped[a:b, c:d])
